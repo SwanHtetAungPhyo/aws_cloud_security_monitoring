@@ -1,9 +1,8 @@
-
 # Cloud Security & Compliance Monitoring Platform
 
 ## Architecture
 
-![Architecture Diagram](diagrams/cloud-security-architecture.drawio.png)
+![Architecture Diagram](diagrams/cloud-security-architecture.drawio.svg)
 
 ## Overview
 
