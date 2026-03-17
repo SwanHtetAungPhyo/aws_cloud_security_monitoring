@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set +e
 
-REGION="eu-central-1"
-BUCKET="cloudtrail-logs-595069099192"
+REGION="${AWS_DEFAULT_REGION:-eu-central-1}"
+BUCKET=$(aws cloudtrail describe-trails --query 'trailList[0].S3BucketName' --output text --region "$REGION" 2>/dev/null || echo "your-cloudtrail-bucket")
 
 echo "=== Simulating S3 Bucket Tampering ==="
 

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set +e
 
-REGION="eu-central-1"
-ACCOUNT_ID="595069099192"
-TRAIL_NAME="security-audit-trail"
-BUCKET_NAME="cloudtrail-logs-595069099192"
+REGION="${AWS_DEFAULT_REGION:-eu-central-1}"
+ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text 2>/dev/null)
+TRAIL_NAME=$(aws cloudtrail describe-trails --region "$REGION" --query 'trailList[0].Name' --output text 2>/dev/null || echo "")
+BUCKET_NAME=$(aws cloudtrail describe-trails --region "$REGION" --query 'trailList[0].S3BucketName' --output text 2>/dev/null || echo "")
 LOG_GROUP="/aws/cloudtrail/${TRAIL_NAME}"
 SNS_TOPIC="arn:aws:sns:${REGION}:${ACCOUNT_ID}:security-alerts"
 AUDIT_ROLE="arn:aws:iam::${ACCOUNT_ID}:role/SecurityAuditRole"
-EVENT_DATA_STORE="arn:aws:cloudtrail:${REGION}:${ACCOUNT_ID}:eventdatastore/927f7e82-b89a-4fac-9820-68bfa2a7e8bc"
+EVENT_DATA_STORE=$(aws cloudtrail list-event-data-stores --region "$REGION" \
+  --query 'EventDataStores[?Status==`ENABLED`].EventDataStoreArn | [0]' --output text 2>/dev/null || echo "")
 
 PASS=0
 FAIL=0
@@ -108,36 +109,40 @@ echo ""
 echo "[3/7] CloudTrail"
 echo "------------------------------------------------------"
 
-TRAIL_STATUS=$(aws cloudtrail get-trail-status --name "$TRAIL_NAME" \
-  --region "$REGION" 2>/dev/null)
-if [ $? -eq 0 ]; then
-  IS_LOGGING=$(echo "$TRAIL_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['IsLogging'])")
-  if [ "$IS_LOGGING" = "True" ]; then
-    pass "CloudTrail is actively logging"
-  else
-    fail "CloudTrail is NOT logging"
-  fi
-else
+if [ -z "$TRAIL_NAME" ] || [ "$TRAIL_NAME" = "None" ]; then
   fail "CloudTrail trail not found"
-fi
-
-check "Trail is multi-region" \
-  aws cloudtrail describe-trails --trail-name-list "$TRAIL_NAME" \
-  --region "$REGION" \
-  --query 'trailList[0].IsMultiRegionTrail' --output text
-
-check "Log file validation enabled" \
-  aws cloudtrail describe-trails --trail-name-list "$TRAIL_NAME" \
-  --region "$REGION" \
-  --query 'trailList[0].LogFileValidationEnabled' --output text
-
-KMS_KEY=$(aws cloudtrail describe-trails --trail-name-list "$TRAIL_NAME" \
-  --region "$REGION" \
-  --query 'trailList[0].KmsKeyId' --output text 2>/dev/null || echo "None")
-if [ "$KMS_KEY" != "None" ] && [ -n "$KMS_KEY" ]; then
-  pass "Trail encrypted with KMS: ${KMS_KEY:0:40}..."
 else
-  fail "Trail KMS encryption"
+  TRAIL_STATUS=$(aws cloudtrail get-trail-status --name "$TRAIL_NAME" \
+    --region "$REGION" 2>/dev/null)
+  if [ $? -eq 0 ]; then
+    IS_LOGGING=$(echo "$TRAIL_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['IsLogging'])")
+    if [ "$IS_LOGGING" = "True" ]; then
+      pass "CloudTrail is actively logging"
+    else
+      fail "CloudTrail is NOT logging"
+    fi
+  else
+    fail "CloudTrail trail not found"
+  fi
+
+  check "Trail is multi-region" \
+    aws cloudtrail describe-trails --trail-name-list "$TRAIL_NAME" \
+    --region "$REGION" \
+    --query 'trailList[0].IsMultiRegionTrail' --output text
+
+  check "Log file validation enabled" \
+    aws cloudtrail describe-trails --trail-name-list "$TRAIL_NAME" \
+    --region "$REGION" \
+    --query 'trailList[0].LogFileValidationEnabled' --output text
+
+  KMS_KEY=$(aws cloudtrail describe-trails --trail-name-list "$TRAIL_NAME" \
+    --region "$REGION" \
+    --query 'trailList[0].KmsKeyId' --output text 2>/dev/null || echo "None")
+  if [ "$KMS_KEY" != "None" ] && [ -n "$KMS_KEY" ]; then
+    pass "Trail encrypted with KMS"
+  else
+    fail "Trail KMS encryption"
+  fi
 fi
 
 echo ""
@@ -146,52 +151,56 @@ echo ""
 echo "[4/7] S3 Log Bucket"
 echo "------------------------------------------------------"
 
-check "Bucket exists" \
-  aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$REGION"
-
-ENC_ALGO=$(aws s3api get-bucket-encryption --bucket "$BUCKET_NAME" \
-  --region "$REGION" \
-  --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
-  --output text 2>/dev/null || echo "None")
-if [ "$ENC_ALGO" = "aws:kms" ]; then
-  pass "Bucket encrypted with KMS (aws:kms)"
+if [ -z "$BUCKET_NAME" ] || [ "$BUCKET_NAME" = "None" ]; then
+  fail "No S3 bucket found for CloudTrail"
 else
-  fail "Bucket encryption (got: $ENC_ALGO)"
-fi
+  check "Bucket exists" \
+    aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$REGION"
 
-VERSIONING=$(aws s3api get-bucket-versioning --bucket "$BUCKET_NAME" \
-  --region "$REGION" \
-  --query 'Status' --output text 2>/dev/null || echo "None")
-if [ "$VERSIONING" = "Enabled" ]; then
-  pass "Bucket versioning enabled"
-else
-  fail "Bucket versioning (got: $VERSIONING)"
-fi
+  ENC_ALGO=$(aws s3api get-bucket-encryption --bucket "$BUCKET_NAME" \
+    --region "$REGION" \
+    --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
+    --output text 2>/dev/null || echo "None")
+  if [ "$ENC_ALGO" = "aws:kms" ]; then
+    pass "Bucket encrypted with KMS (aws:kms)"
+  else
+    fail "Bucket encryption (got: $ENC_ALGO)"
+  fi
 
-PUBLIC_BLOCK=$(aws s3api get-public-access-block --bucket "$BUCKET_NAME" \
-  --region "$REGION" \
-  --query 'PublicAccessBlockConfiguration.BlockPublicAcls' \
-  --output text 2>/dev/null || echo "false")
-if [ "$PUBLIC_BLOCK" = "True" ]; then
-  pass "Public access blocked"
-else
-  fail "Public access block"
-fi
+  VERSIONING=$(aws s3api get-bucket-versioning --bucket "$BUCKET_NAME" \
+    --region "$REGION" \
+    --query 'Status' --output text 2>/dev/null || echo "None")
+  if [ "$VERSIONING" = "Enabled" ]; then
+    pass "Bucket versioning enabled"
+  else
+    fail "Bucket versioning (got: $VERSIONING)"
+  fi
 
-LOGGING=$(aws s3api get-bucket-logging --bucket "$BUCKET_NAME" \
-  --region "$REGION" \
-  --query 'LoggingEnabled.TargetBucket' --output text 2>/dev/null || echo "None")
-if [ "$LOGGING" != "None" ] && [ -n "$LOGGING" ]; then
-  pass "Access logging enabled -> $LOGGING"
-else
-  fail "Access logging not enabled"
-fi
+  PUBLIC_BLOCK=$(aws s3api get-public-access-block --bucket "$BUCKET_NAME" \
+    --region "$REGION" \
+    --query 'PublicAccessBlockConfiguration.BlockPublicAcls' \
+    --output text 2>/dev/null || echo "false")
+  if [ "$PUBLIC_BLOCK" = "True" ]; then
+    pass "Public access blocked"
+  else
+    fail "Public access block"
+  fi
 
-LOG_COUNT=$(aws s3 ls "s3://${BUCKET_NAME}/AWSLogs/" --region "$REGION" 2>/dev/null | wc -l | tr -d ' ')
-if [ "$LOG_COUNT" -gt 0 ]; then
-  pass "CloudTrail logs present in bucket"
-else
-  warn "No CloudTrail logs yet (may take a few minutes)"
+  LOGGING=$(aws s3api get-bucket-logging --bucket "$BUCKET_NAME" \
+    --region "$REGION" \
+    --query 'LoggingEnabled.TargetBucket' --output text 2>/dev/null || echo "None")
+  if [ "$LOGGING" != "None" ] && [ -n "$LOGGING" ]; then
+    pass "Access logging enabled"
+  else
+    fail "Access logging not enabled"
+  fi
+
+  LOG_COUNT=$(aws s3 ls "s3://${BUCKET_NAME}/AWSLogs/" --region "$REGION" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$LOG_COUNT" -gt 0 ]; then
+    pass "CloudTrail logs present in bucket"
+  else
+    warn "No CloudTrail logs yet (may take a few minutes)"
+  fi
 fi
 
 echo ""
@@ -262,7 +271,7 @@ if [ "$SUB_COUNT" -gt 0 ]; then
     --region "$REGION" \
     --query 'Subscriptions[0].SubscriptionArn' --output text 2>/dev/null || echo "")
   if echo "$SUB_STATUS" | grep -q "PendingConfirmation"; then
-    warn "Email subscription pending confirmation — check your inbox"
+    warn "Email subscription pending confirmation -- check your inbox"
   else
     pass "Email subscription confirmed"
   fi
@@ -288,24 +297,28 @@ else
   fail "No security standards enabled"
 fi
 
-EDS_STATUS=$(aws cloudtrail get-event-data-store \
-  --event-data-store "$EVENT_DATA_STORE" \
-  --region "$REGION" \
-  --query 'Status' --output text 2>/dev/null || echo "UNKNOWN")
-if [ "$EDS_STATUS" = "ENABLED" ]; then
-  pass "CloudTrail Lake event data store active"
-else
-  warn "CloudTrail Lake status: $EDS_STATUS (may still be creating)"
-fi
+if [ -n "$EVENT_DATA_STORE" ] && [ "$EVENT_DATA_STORE" != "None" ]; then
+  EDS_STATUS=$(aws cloudtrail get-event-data-store \
+    --event-data-store "$EVENT_DATA_STORE" \
+    --region "$REGION" \
+    --query 'Status' --output text 2>/dev/null || echo "UNKNOWN")
+  if [ "$EDS_STATUS" = "ENABLED" ]; then
+    pass "CloudTrail Lake event data store active"
+  else
+    warn "CloudTrail Lake status: $EDS_STATUS (may still be creating)"
+  fi
 
-EDS_KMS=$(aws cloudtrail get-event-data-store \
-  --event-data-store "$EVENT_DATA_STORE" \
-  --region "$REGION" \
-  --query 'KmsKeyId' --output text 2>/dev/null || echo "None")
-if [ "$EDS_KMS" != "None" ] && [ -n "$EDS_KMS" ]; then
-  pass "CloudTrail Lake encrypted with KMS"
+  EDS_KMS=$(aws cloudtrail get-event-data-store \
+    --event-data-store "$EVENT_DATA_STORE" \
+    --region "$REGION" \
+    --query 'KmsKeyId' --output text 2>/dev/null || echo "None")
+  if [ "$EDS_KMS" != "None" ] && [ -n "$EDS_KMS" ]; then
+    pass "CloudTrail Lake encrypted with KMS"
+  else
+    fail "CloudTrail Lake KMS encryption"
+  fi
 else
-  fail "CloudTrail Lake KMS encryption"
+  fail "No CloudTrail Lake event data store found"
 fi
 
 echo ""
