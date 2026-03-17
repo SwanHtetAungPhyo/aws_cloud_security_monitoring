@@ -61,15 +61,12 @@ jobs:
           tflint_version: latest
 
       - name: Init TFLint
-        run: tflint --init --config setup/.tflint.hcl
-
-      - name: Lint Root Module
-        run: tflint --config .tflint.hcl --format compact --minimum-failure-severity=warning
+        run: tflint --init
         working-directory: setup
 
-      - name: Lint Child Modules
-        run: tflint --config ../.tflint.hcl --recursive --format compact --minimum-failure-severity=warning
-        working-directory: setup/modules
+      - name: Lint All Modules
+        run: tflint --recursive --format compact --minimum-failure-severity=warning
+        working-directory: setup
 
   trivy:
     name: Security Scan (Trivy)
