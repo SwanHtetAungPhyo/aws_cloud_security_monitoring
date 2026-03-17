@@ -14,11 +14,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloud_trail_bucke
   }
 }
 
-resource "aws_s3_bucket_acl" "cloud_log_bucket_acl" {
-  bucket = aws_s3_bucket.cloud_trail_logs_store_bucket.id
-  acl    = "private"
-}
-
 resource "aws_s3_bucket_versioning" "cloud_log_bucket_versioning" {
   bucket = aws_s3_bucket.cloud_trail_logs_store_bucket.id
   versioning_configuration {

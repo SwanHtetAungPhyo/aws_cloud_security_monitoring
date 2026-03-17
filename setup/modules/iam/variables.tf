@@ -13,7 +13,7 @@ variable "admin_group_name" {
 variable "admin_group_path" {
   description = "Path for the IAM admin group"
   type        = string
-  default     = "/admins"
+  default     = "/admins/"
 }
 
 variable "minimum_password_length" {

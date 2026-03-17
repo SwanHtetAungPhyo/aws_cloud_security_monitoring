@@ -58,12 +58,51 @@ resource "aws_kms_key" "cloudtrail" {
         }
       },
       {
-        Sid       = "AllowSNSEncrypt"
+        Sid       = "AllowCloudTrailLakeEncrypt"
         Effect    = "Allow"
-        Principal = { Service = "sns.amazonaws.com" }
+        Principal = { Service = "cloudtrail.amazonaws.com" }
         Action = [
           "kms:GenerateDataKey*",
-          "kms:Decrypt"
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:Encrypt",
+          "kms:ReEncrypt*",
+          "kms:CreateGrant"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudTrailLakeQuery"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+          "kms:CreateGrant"
+        ]
+        Resource = "*"
+        Condition = {
+          BoolIfExists = {
+            "kms:GrantIsForAWSResource" = "true"
+          }
+        }
+      },
+      {
+        Sid       = "AllowSNSEncrypt"
+        Effect    = "Allow"
+        Principal = {
+          Service = [
+            "sns.amazonaws.com",
+            "cloudtrail.amazonaws.com"
+          ]
+        }
+        Action = [
+          "kms:GenerateDataKey*",
+          "kms:Decrypt",
+          "kms:DescribeKey"
         ]
         Resource = "*"
       }

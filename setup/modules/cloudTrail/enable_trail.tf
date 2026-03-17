@@ -20,5 +20,8 @@ resource "aws_cloudtrail" "multi_region_trail" {
   sns_topic_name             = aws_sns_topic.security_alerts.arn
   cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*"
   cloud_watch_logs_role_arn  = aws_iam_role.cloud_watch_trail_iam_role.arn
-  depends_on                 = [aws_s3_bucket_policy.cloud_trail_logs_store_bucket]
+  depends_on = [
+    aws_s3_bucket_policy.cloud_trail_logs_store_bucket,
+    aws_sns_topic_policy.cloudtrail_publish
+  ]
 }

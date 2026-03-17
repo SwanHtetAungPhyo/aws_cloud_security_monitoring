@@ -1,5 +1,5 @@
 resource "aws_cloudtrail_event_data_store" "management_events" {
-  name                           = "${var.cloud_trail_name}-lake-datastore"
+  name                           = "${var.cloud_trail_name}-lake-eds"
   retention_period               = var.lake_retention_days
   multi_region_enabled           = true
   organization_enabled           = false
