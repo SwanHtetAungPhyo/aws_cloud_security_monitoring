@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set +e
+
+REGION="eu-central-1"
+BUCKET="cloudtrail-logs-595069099192"
+
+echo "=== Simulating S3 Bucket Tampering ==="
+
+aws s3api delete-bucket-encryption --bucket "$BUCKET" --region "$REGION" 2>&1 || true
+aws s3api put-bucket-acl --bucket "$BUCKET" --acl public-read --region "$REGION" 2>&1 || true
+aws s3api delete-bucket-policy --bucket "$BUCKET" --region "$REGION" 2>&1 || true
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false \
+  --region "$REGION" 2>&1 || true
+aws s3api delete-bucket-versioning --bucket "$BUCKET" --region "$REGION" 2>&1 || true
+
+echo "=== Done: 5 S3 tampering attempts ==="
