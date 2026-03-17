@@ -91,8 +91,8 @@ resource "aws_kms_key" "cloudtrail" {
         }
       },
       {
-        Sid       = "AllowSNSEncrypt"
-        Effect    = "Allow"
+        Sid    = "AllowSNSEncrypt"
+        Effect = "Allow"
         Principal = {
           Service = [
             "sns.amazonaws.com",
