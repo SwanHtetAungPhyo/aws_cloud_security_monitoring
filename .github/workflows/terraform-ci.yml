@@ -61,15 +61,14 @@ jobs:
           tflint_version: latest
 
       - name: Init TFLint
-        run: tflint --init
-        working-directory: setup
+        run: tflint --init --config setup/.tflint.hcl
 
       - name: Lint Root Module
-        run: tflint --format compact --minimum-failure-severity=warning
+        run: tflint --config .tflint.hcl --format compact --minimum-failure-severity=warning
         working-directory: setup
 
       - name: Lint Child Modules
-        run: tflint --recursive --format compact --minimum-failure-severity=warning
+        run: tflint --config ../.tflint.hcl --recursive --format compact --minimum-failure-severity=warning
         working-directory: setup/modules
 
   trivy:
@@ -78,15 +77,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
       - name: Run Trivy IaC Scanner
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: config
-          scan-ref: setup
-          format: table
-          exit-code: 1
-          severity: CRITICAL,HIGH
-          trivyignores: .trivyignore
+        run: trivy config setup --severity CRITICAL,HIGH --exit-code 1 --ignorefile .trivyignore --format table
 
   checkov:
     name: Security Scan (Checkov)
