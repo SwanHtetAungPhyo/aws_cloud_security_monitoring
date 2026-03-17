@@ -1,0 +1,4 @@
+# CloudTrail Lake event data store uses free-tier 7-day retention (intentional)
+# S3 cross-region replication not needed for single-region dev setup
+# S3 access logging destination buckets cannot use KMS encryption (AWS limitation)
+AVD-AWS-0132

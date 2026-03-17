@@ -1,0 +1,118 @@
+name: Terraform CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'setup/**'
+      - '.github/workflows/terraform-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'setup/**'
+      - '.github/workflows/terraform-ci.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  format:
+    name: Terraform Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.12.0"
+
+      - name: Terraform Format Check
+        run: terraform fmt -recursive -check -diff
+        working-directory: setup
+
+  validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.12.0"
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: setup
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: setup
+
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Init TFLint
+        run: tflint --init
+        working-directory: setup
+
+      - name: Lint Root Module
+        run: tflint --format compact --minimum-failure-severity=warning
+        working-directory: setup
+
+      - name: Lint Child Modules
+        run: tflint --recursive --format compact --minimum-failure-severity=warning
+        working-directory: setup/modules
+
+  trivy:
+    name: Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy IaC Scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: setup
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore
+
+  checkov:
+    name: Security Scan (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: setup
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          output_format: cli
+          skip_check: CKV_AWS_144,CKV_AWS_145,CKV_AWS_355,CKV_AWS_288,CKV_AWS_289,CKV_AWS_290,CKV_AWS_286,CKV_AWS_273,CKV_AWS_274,CKV2_AWS_62
+
+  docs:
+    name: Docs Check (terraform-docs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check terraform-docs
+        uses: terraform-docs/gh-actions@v1
+        with:
+          working-dir: setup/modules/iam,setup/modules/cloudTrail,setup/modules/security_hub,setup/modules/lake
+          output-method: inject
+          fail-on-diff: false

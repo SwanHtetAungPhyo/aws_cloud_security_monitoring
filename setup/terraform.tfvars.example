@@ -1,0 +1,21 @@
+# Required
+region                 = "eu-west-1"
+cloudtrail_bucket_name = "my-org-cloudtrail-logs"
+sns_endpoint           = "security-team@example.com"
+
+# Optional — uncomment to override defaults
+# project_name       = "cloud-security-platform"
+# environment        = "dev"
+# cloud_trail_name   = "security-audit-trail"
+# users              = ["alice", "bob", "charlie"]
+# admin_group_name   = "cloud_admin"
+# sns_topic_name     = "security-alerts"
+
+# Cross-account STS (Phase 2) — leave empty for same-account
+# trusted_principal_arns = ["arn:aws:iam::123456789012:root"]
+# audit_role_external_id = "my-external-id"
+
+# tags = {
+#   Owner      = "security-team"
+#   CostCenter = "security"
+# }
